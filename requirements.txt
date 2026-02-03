@@ -9,8 +9,10 @@ python-dotenv==1.2.1
 # Data processing
 pandas==2.3.3
 
-# Streamlit UI
-streamlit==1.53.1
+# Flask
+Flask==3.1.2
 
 # Utilities
 python-dateutil==2.9.0.post0
+
+dateparser==1.2.2

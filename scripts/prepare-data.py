@@ -206,7 +206,7 @@ def main():
         
         print("\n✅ Data preparation complete!")
         print(f"Database location: {output_db}")
-        print("\nYou can now run the agent with: streamlit run app.py")
+        print("\nYou can now run the agent")
         
     except Exception as e:
         print(f"\nERROR: {e}")

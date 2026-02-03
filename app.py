@@ -1,164 +1,146 @@
 """
-BiteBot Restaurant Agent - Streamlit UI
+BiteBot Flask Application
 
-A conversational interface for the restaurant recommendation agent.
+A conversational interface for restaurant discovery and reservations.
 """
 
-import streamlit as st
+from flask import Flask, render_template, request, jsonify, session
+import os
+import json
+import re
+from datetime import datetime
+from dotenv import load_dotenv
 from src.agent import create_bitebot_agent, run_agent
 
-# Page configuration
-st.set_page_config(
-    page_title="BiteBot Restaurant Agent",
-    page_icon="🍽️",
-    layout="wide"
-)
+# Load environment variables
+load_dotenv()
 
-# Title and description
-st.title("🍽️ BiteBot Restaurant Agent")
-st.markdown("""
-Welcome to BiteBot! I'm your AI restaurant assistant powered by real Yelp data.
+app = Flask(__name__)
+app.secret_key = os.getenv('FLASK_SECRET_KEY', os.urandom(24).hex())
 
-Ask me to:
-- 🔍 Find restaurants by cuisine, location, or price
-- ℹ️ Get detailed information about specific restaurants
-- ⏰ Check if restaurants are currently open
-- 💡 Get personalized recommendations
+# Initialize agent (shared across sessions)
+try:
+    agent = create_bitebot_agent()
+    print("✅ BiteBot initialized successfully!")
+except Exception as e:
+    print(f"❌ Error initializing agent: {e}")
+    agent = None
 
-**Example queries:**
-- "Find me Italian restaurants in Philadelphia"
-- "Show me affordable Chinese food in Tampa"  
-- "Is Vetri Cucina open right now?"
-- "Tell me more about Han Dynasty"
-""")
 
-st.divider()
+@app.route('/')
+def index():
+    """Render the main chat interface."""
+    if 'messages' not in session:
+        session['messages'] = []
+    if 'reservations' not in session:
+        session['reservations'] = []
+    if 'tool_context' not in session:
+        session['tool_context'] = {}
 
-# Initialize session state
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+    return render_template('index.html')
 
-if "agent" not in st.session_state:
-    with st.spinner("Initializing BiteBot agent..."):
-        try:
-            st.session_state.agent = create_bitebot_agent()
-            st.success("✅ Agent initialized successfully!")
-        except FileNotFoundError as e:
-            st.error(f"❌ Database not found: {e}")
-            st.info("Please run: `python scripts/prepare_data.py` to create the database.")
-            st.stop()
-        except ValueError as e:
-            st.error(f"❌ Configuration error: {e}")
-            st.info("Please create a `.env` file with your `OPENAI_API_KEY`")
-            st.stop()
-        except Exception as e:
-            st.error(f"❌ Error initializing agent: {e}")
-            st.stop()
 
-# Display chat messages
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-        
-        # Show tool calls if available
-        if message.get("show_tools") and message.get("intermediate_steps"):
-            with st.expander("🔧 View Agent's Tool Calls", expanded=False):
-                for step in message["intermediate_steps"]:
-                    action, observation = step
-                    st.markdown(f"**Tool:** `{action.tool}`")
-                    st.code(action.tool_input, language="json")
-                    st.markdown(f"**Result:**")
-                    st.text(observation[:500] + ("..." if len(observation) > 500 else ""))
-                    st.divider()
+@app.route('/chat', methods=['POST'])
+def chat():
+    """Handle chat messages."""
+    if not agent:
+        return jsonify({
+            'error': 'Agent not initialized. Please check your configuration.'
+        }), 500
 
-# Chat input
-if prompt := st.chat_input("Ask me about restaurants..."):
-    # Add user message
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
-    
-    # Get agent response with full conversation history
-    with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            response = run_agent(
-                st.session_state.agent, 
-                prompt,
-                conversation_history=st.session_state.messages  # Pass existing messages
-            )
-            
-            # Extract output and intermediate steps
-            output = response.get("output", "I apologize, but I couldn't process that request.")
-            intermediate_steps = response.get("intermediate_steps", [])
-            
-            # Display response
-            st.markdown(output)
-            
-            # Show tool calls in expander
-            if intermediate_steps:
-                with st.expander("🔧 View Agent's Tool Calls", expanded=False):
-                    for step in intermediate_steps:
-                        action, observation = step
-                        st.markdown(f"**Tool:** `{action.tool}`")
-                        st.code(action.tool_input, language="json")
-                        st.markdown(f"**Result:**")
-                        st.text(observation[:500] + ("..." if len(observation) > 500 else ""))
-                        st.divider()
-    
-    # Add assistant message
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": output,
-        "show_tools": True,
-        "intermediate_steps": intermediate_steps
+    try:
+        data = request.get_json()
+        user_message = data.get('message', '').strip()
+
+        if not user_message:
+            return jsonify({'error': 'Empty message'}), 400
+
+        # Get conversation history and tool context from session
+        conversation_history = session.get('messages', [])
+        tool_context = session.get('tool_context', {})
+
+        # Add user message to history
+        conversation_history.append({
+            'role': 'user',
+            'content': user_message
+        })
+
+        # Get agent response (passes tool_context so tools can share state across turns)
+        response = run_agent(agent, user_message, conversation_history, tool_context)
+        assistant_message = response.get('output', 'Sorry, I encountered an error.')
+
+        # Store reservation if make_reservation_tool fired this turn
+        reservation_json = response.get('reservation_json')
+        if reservation_json:
+            try:
+                reservation = json.loads(reservation_json)
+                reservations = session.get('reservations', [])
+                existing_ids = [r['reservation_id'] for r in reservations]
+                if reservation['reservation_id'] not in existing_ids:
+                    reservations.append(reservation)
+                    session['reservations'] = reservations
+            except json.JSONDecodeError:
+                pass
+
+        # Clean up the output (remove IMPORTANT line)
+        clean_message = re.sub(r'\n*IMPORTANT: This reservation data includes: {.*?}\n*', '', assistant_message)
+
+        # Only persist the final assistant message — NOT the intermediate
+        # AIMessage+ToolMessage pairs.  Those have tool_calls metadata that
+        # _serialize_message strips, which makes OpenAI reject the replay
+        # ("tool message must follow a message with tool_calls").
+        # tool_context handles inter-tool state across turns now.
+        conversation_history.append({
+            'role': 'assistant',
+            'content': clean_message
+        })
+
+        # Update session
+        session['messages'] = conversation_history
+        session['tool_context'] = response.get('tool_context', {})
+        session.modified = True
+
+        return jsonify({
+            'message': clean_message,
+            'reservations': session.get('reservations', [])
+        })
+
+    except Exception as e:
+        print(f"Error in chat endpoint: {e}")
+        return jsonify({
+            'error': f'An error occurred: {str(e)}'
+        }), 500
+
+
+@app.route('/reset', methods=['POST'])
+def reset():
+    """Reset the conversation."""
+    session['messages'] = []
+    session['reservations'] = []
+    session['tool_context'] = {}
+    session.modified = True
+    return jsonify({'status': 'ok'})
+
+
+@app.route('/reservations', methods=['GET'])
+def get_reservations():
+    """Get all reservations."""
+    return jsonify({
+        'reservations': session.get('reservations', [])
     })
 
-# Sidebar
-with st.sidebar:
-    st.header("About BiteBot")
-    st.markdown("""
-    **BiteBot** is an agentic AI system built for:
-    - 📚 "The Software Engineer's Guide to Agentic AI Systems & Observability"
-    
-    **Architecture:**
-    - 🧠 LLM: OpenAI GPT-4o-mini
-    - 🔧 Framework: LangChain
-    - 🗄️ Database: SQLite (Yelp data)
-    - 💬 UI: Streamlit
-    
-    **Tools:**
-    - `search_restaurants_tool` - Find restaurants
-    - `get_restaurant_details_tool` - Get info
-    - `check_if_open_tool` - Check hours
-    """)
-    
-    st.divider()
-    
-    if st.button("🔄 Reset Conversation"):
-        st.session_state.messages = []
-        st.session_state.agent = create_bitebot_agent()
-        st.rerun()
-    
-    st.divider()
-    
-    st.markdown("**Dataset Statistics:**")
-    try:
-        from src.database import get_connection
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM restaurants")
-        total = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(DISTINCT city) FROM restaurants")
-        cities = cursor.fetchone()[0]
-        cursor.execute("SELECT AVG(stars) FROM restaurants")
-        avg_rating = cursor.fetchone()[0]
-        conn.close()
-        
-        st.metric("Total Restaurants", f"{total:,}")
-        st.metric("Cities", f"{cities:,}")
-        st.metric("Avg Rating", f"{avg_rating:.2f}⭐")
-    except:
-        st.info("Database stats unavailable")
-    
-    st.divider()
-    st.caption("💡 Tip: Be specific about location and preferences for better recommendations!")
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Health check endpoint for monitoring."""
+    return jsonify({
+        'status': 'healthy',
+        'agent_initialized': agent is not None,
+        'timestamp': datetime.now().isoformat()
+    })
+
+
+if __name__ == '__main__':
+    port = int(os.getenv('PORT', 5000))
+    debug = os.getenv('FLASK_ENV') == 'development'
+    app.run(host='0.0.0.0', port=port, debug=debug)

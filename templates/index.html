@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🍽️ BiteBot - Restaurant Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <h1>🍽️ BiteBot</h1>
+            <p class="subtitle">Your AI Restaurant Discovery & Reservation Assistant</p>
+        </header>
+
+        <div class="main-content">
+            <!-- Chat Section -->
+            <div class="chat-section">
+                <div class="welcome-message" id="welcomeMessage">
+                    <h2>Welcome to BiteBot!</h2>
+                    <p>I can help you:</p>
+                    <ul>
+                        <li>🔍 Find restaurants by cuisine, location, and amenities</li>
+                        <li>ℹ️ Get detailed restaurant information</li>
+                        <li>⏰ Check availability and hours</li>
+                        <li>📅 Make reservations</li>
+                    </ul>
+                    <p><strong>Try asking:</strong></p>
+                    <ul>
+                        <li>"Find Italian restaurants with outdoor seating in Philadelphia"</li>
+                        <li>"Show me wheelchair accessible restaurants in Tampa"</li>
+                        <li>"Is Vetri Cucina open right now?"</li>
+                        <li>"Book a table for 4 tomorrow at 7pm"</li>
+                    </ul>
+                </div>
+
+                <div class="chat-messages" id="chatMessages"></div>
+                
+                <div class="chat-input-container">
+                    <input 
+                        type="text" 
+                        id="messageInput" 
+                        placeholder="Ask me about restaurants..."
+                        autocomplete="off"
+                    >
+                    <button id="sendButton">Send</button>
+                </div>
+            </div>
+
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <div class="sidebar-section">
+                    <h3>📅 Your Reservations</h3>
+                    <div id="reservationsList">
+                        <p class="no-reservations">No reservations yet</p>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>ℹ️ About</h3>
+                    <p class="info-text">
+                        <strong>BiteBot</strong> is built with:
+                    </p>
+                    <ul class="tech-stack">
+                        <li>🧠 LLM: OpenAI GPT-4o-mini</li>
+                        <li>🔧 Framework: LangChain</li>
+                        <li>🗄️ Database: SQLite (Yelp data)</li>
+                        <li>💬 UI: Flask</li>
+                    </ul>
+                </div>
+
+                <button id="resetButton" class="reset-button">🔄 Reset Conversation</button>
+            </aside>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
