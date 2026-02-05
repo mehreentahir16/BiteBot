@@ -63,7 +63,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 addMessage(`Error: ${data.error}`, 'assistant');
             } else {
                 addMessage(data.message, 'assistant');
-                if (data.reservations && data.reservations.length > 0) {
+                
+                // Always update reservations, even if empty.
+                if (data.reservations !== undefined) {
                     updateReservations(data.reservations);
                 }
             }

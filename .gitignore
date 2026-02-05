@@ -13,12 +13,8 @@ ENV/
 .env
 
 # Data files
-data/yelp_academic_dataset_checkin.json
+data/yelp_dataset
 data/yelp_academic_dataset_review.json
-data/yelp_academic_dataset_tip.json
-data/yelp_academic_dataset_user.json
-data/yelp_academic_dataset_business.json
-data/Dataset_User_Agreement.pdf
 
 
 # IDE

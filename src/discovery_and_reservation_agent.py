@@ -6,22 +6,13 @@ Memory architecture
 * MemorySaver (checkpointer) owns the full per-session conversation.
   We only hand agent.invoke() the NEW message; the checkpointer supplies
   the rest via thread_id.
-* _TrimmedModel sits between the agent and OpenAI.  It keeps the system
-  message + the last KEEP messages before every LLM call.  Without it the
-  full thread history would be sent to OpenAI on every turn, which (a)
-  burns tokens and (b) causes New Relic AI monitoring to label every
-  request with the very first user message in the thread.
-
 """
 
 import os
-import re as _re
 import logging
-import warnings
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, trim_messages
-
+from langchain_core.messages import HumanMessage
 
 from langchain.agents import create_agent
 from langgraph.checkpoint.memory import MemorySaver
@@ -39,11 +30,11 @@ logger = logging.getLogger(__name__)
 _checkpointer = MemorySaver()
 
 # Agent factory
-def create_bitebot_agent():
+def create_discovery_and_reservation_agent():
     if not os.getenv("OPENAI_API_KEY"):
         raise ValueError("OpenAI API key not found.")
 
-    model = ChatOpenAI(model="gpt-4o-mini", temperature=0.7)
+    model = ChatOpenAI(model="gpt-4o", temperature=0.7)
 
     system_prompt = """You are BiteBot, a friendly and conversational restaurant assistant.
 
@@ -76,7 +67,7 @@ def create_bitebot_agent():
 
         Be conversational and helpful!"""
 
-    logger.info("Creating agent with 4 tools")
+    logger.info(f"Creating agent with {len(all_tools)} tools")
     for t in all_tools:
         logger.info(f"  - {t.name}")
 
@@ -92,7 +83,7 @@ def create_bitebot_agent():
 def run_agent(agent, user_message: str, thread_id: str, tool_context: dict = None) -> dict:
     """Invoke the agent with a single new message.
 
-    The checkpointer owns conversation history -- we do NOT replay it.
+    The checkpointer owns conversation history. We do NOT replay it.
 
     Args:
         agent:        The compiled agent graph.
@@ -104,62 +95,60 @@ def run_agent(agent, user_message: str, thread_id: str, tool_context: dict = Non
     Returns:
         output           -- the assistant's reply (clean text).
         tool_context     -- updated inter-tool state to persist in session.
-        reservation_json -- raw JSON string if a reservation was confirmed, else None.
+        reservation_json -- raw JSON dict if a reservation was confirmed, else None.
     """
-    # Restore tool context from previous request
-    if tool_context:
-        for key, value in tool_context.items():
-            if value is not None:
-                set_tool_context(key, value)
+    try:
+        # Restore tool context from previous request
+        if tool_context:
+            for key, value in tool_context.items():
+                if value is not None:
+                    set_tool_context(key, value)
 
-    logger.info(f"[AGENT] thread={thread_id} | message={user_message}")
+        logger.info(f"Processing message for thread: {thread_id}")
 
-    # Bind this execution context to the session's thread_id.  Must happen
-    # before invoke() — ContextVar propagates into the worker threads that
-    # langgraph uses to run tools, so they'll land in the right bucket.
-    set_active_session(thread_id)
+        # Bind this execution context to the session's thread_id. ContextVar propagates into the worker threads that langgraph uses to run tools, so they'll land in the right bucket.
+        set_active_session(thread_id)
 
-    config = {"configurable": {"thread_id": thread_id}}
-    response = agent.invoke(
-        {"messages": [HumanMessage(content=user_message)]},
-        config=config,
-    )
-    response_messages = response.get("messages", [])
+        config = {"configurable": {"thread_id": thread_id}}
+        response = agent.invoke(
+            {"messages": [HumanMessage(content=user_message)]},
+            config=config,
+        )
+        
+        # Get all messages from response
+        messages = response.get("messages", [])
+        
+        if not messages:
+            logger.warning("No messages returned from agent")
+            return {
+                "output": "I apologize, but I encountered an issue processing your request.",
+                "tool_context": {"availability": None},
+                "reservation_json": None,
+            }
 
-    logger.info(f"[AGENT] {len(response_messages)} messages in thread after invoke")
+        # The last message is always the agent's final response
+        output = messages[-1].content if messages[-1].content else "I'm here to help! What would you like to know?"
 
-    # Debug log -- helpful for tracing tool-call loops
-    for i, msg in enumerate(response_messages):
-        msg_type = type(msg).__name__
-        logger.info(f"[AGENT] [{i}] {msg_type} | {str(getattr(msg, 'content', ''))[:120]}")
-        if hasattr(msg, "tool_calls") and msg.tool_calls:
-            logger.info(f"[AGENT]     tool_calls: {msg.tool_calls}")
+        logger.info(f"Response generated: {output[:200]}...")
 
-    # Final output = last non-empty AIMessage
-    output = ""
-    for msg in reversed(response_messages):
-        if type(msg).__name__ == "AIMessage" and msg.content:
-            output = msg.content
-            break
+        # Get updated tool context (includes any reservation data)
+        updated_tool_context = {
+            "availability": get_tool_context("availability"),
+        }
+        
+        # Get reservation data if it exists (stored by make_reservation_tool)
+        reservation_json = get_tool_context("reservation")
 
-    # Snapshot tool context for session persistence
-    updated_tool_context = {"availability": get_tool_context("availability")}
-
-    # Pull reservation JSON out of ToolMessages (the IMPORTANT line lives
-    # there, not in the LLM's reply -- see tools.py make_reservation_tool).
-    reservation_json = None
-    for msg in response_messages:
-        if type(msg).__name__ == "ToolMessage":
-            match = _re.search(
-                r"IMPORTANT: This reservation data includes: ({.*})",
-                str(msg.content),
-            )
-            if match:
-                reservation_json = match.group(1)
-
-    logger.info(f"[AGENT] output={output[:200]}")
-    return {
-        "output": output,
-        "tool_context": updated_tool_context,
-        "reservation_json": reservation_json,
-    }
+        return {
+            "output": output,
+            "tool_context": updated_tool_context,
+            "reservation_json": reservation_json,
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in run_agent: {str(e)}", exc_info=True)
+        return {
+            "output": "I apologize, but I encountered an error. Please try again.",
+            "tool_context": {"availability": None},
+            "reservation_json": None,
+        }
