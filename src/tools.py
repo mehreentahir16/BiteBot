@@ -418,7 +418,7 @@ def make_reservation_tool(
         if not accepts_reservations:
             return f"❌ **{restaurant['name']}** does not accept reservations (walk-in only)."
 
-        # pull date/time from tool_context (single source of truth) ----
+        # pull date/time from tool_context
         availability = get_tool_context('availability')
         if not availability:
             return "❌ Please check availability first before making a reservation."

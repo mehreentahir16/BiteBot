@@ -9,9 +9,11 @@ This script:
 
 """
 
-import json
-import sqlite3
 import os
+import json
+import random
+import sqlite3
+import traceback
 from pathlib import Path
 from collections import Counter
 
@@ -33,17 +35,26 @@ def load_yelp_data(filepath):
     return businesses
 
 def filter_restaurants(businesses):
-    """Filter businesses to only include restaurants."""
+    """Filter businesses to only include open restaurants."""
     print("Filtering for restaurants...")
     restaurants = []
     
     for business in businesses:
         categories = business.get('categories', '')
-        if categories and 'Restaurants' in categories:
+        is_open = business.get('is_open')
+        if categories and 'Restaurants' in categories and is_open == 1:
             restaurants.append(business)
     
     print(f"Found {len(restaurants):,} restaurants")
     return restaurants
+
+def sample_restaurants(restaurants, sample_size=5000, seed=42):
+    """Randomly sample a fixed number of restaurants."""
+    random.seed(seed)
+    if len(restaurants) <= sample_size:
+        return restaurants
+    return random.sample(restaurants, sample_size)
+
 
 def create_database(restaurants, db_path):
     """Create SQLite database and populate with restaurant data."""
@@ -172,7 +183,7 @@ def print_statistics(restaurants):
 def main():
     # Setup paths
     project_root = Path(__file__).parent.parent
-    data_dir = project_root / 'yelp_dataset'
+    data_dir = project_root / 'data/yelp_dataset'
     input_file = data_dir / 'yelp_academic_dataset_business.json'
     output_db = data_dir / 'restaurants.db'
     
@@ -181,7 +192,7 @@ def main():
         print(f"ERROR: Input file not found: {input_file}")
         print("\nPlease:")
         print("1. Create the 'data/' directory if it doesn't exist")
-        print("2. Place 'yelp_academic_dataset_business.json' in the 'data/' directory")
+        print("2. Place 'yelp_academic_dataset_business.json' in the 'data/yelp_dataset' directory")
         print(f"   Expected location: {input_file}")
         return
     
@@ -198,6 +209,9 @@ def main():
             print("Please check that your Yelp dataset contains businesses with 'Restaurants' in categories")
             return
         
+        # Randomly sample 5000 restaurants
+        restaurants = sample_restaurants(restaurants, sample_size=5000)
+        
         # Create database
         create_database(restaurants, output_db)
         
@@ -210,7 +224,6 @@ def main():
         
     except Exception as e:
         print(f"\nERROR: {e}")
-        import traceback
         traceback.print_exc()
         return
 
