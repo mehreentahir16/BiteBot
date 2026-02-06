@@ -26,7 +26,7 @@ from pinecone import Pinecone, ServerlessSpec
 load_dotenv()
 
 # Configuration
-REVIEW_FILE = "data/yelp_academic_dataset_review.json"
+REVIEW_FILE = "data/yelp_dataset/yelp_academic_dataset_review.json"
 DB_PATH = "data/restaurants.db"
 INDEX_NAME = "bitebot-reviews"
 EMBEDDING_MODEL = "text-embedding-3-small"
