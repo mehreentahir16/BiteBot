@@ -60,11 +60,12 @@ document.addEventListener('DOMContentLoaded', function() {
             chatMessages.removeChild(loadingDiv);
 
             if (data.error) {
-                addMessage(`Error: ${data.error}`, 'assistant');
+                addMessage(data.error, 'assistant', null);
             } else {
-                addMessage(data.message, 'assistant');
+                // Pass trace_id to addMessage
+                addMessage(data.message, 'assistant', data.trace_id);
                 
-                // Always update reservations, even if empty. This ensures cancelled reservations are removed from UI
+                // Always update reservations
                 if (data.reservations !== undefined) {
                     updateReservations(data.reservations);
                 }
@@ -76,13 +77,13 @@ document.addEventListener('DOMContentLoaded', function() {
         .catch(error => {
             // Remove loading indicator
             chatMessages.removeChild(loadingDiv);
-            addMessage(`Error: ${error.message}`, 'assistant');
+            addMessage(`Error: ${error.message}`, 'assistant', null);
             sendButton.disabled = false;
             messageInput.focus();
         });
     }
 
-    function addMessage(content, role) {
+    function addMessage(content, role, traceId = null) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${role}`;
         
@@ -92,8 +93,67 @@ document.addEventListener('DOMContentLoaded', function() {
             .replace(/\n/g, '<br>');
         
         messageDiv.innerHTML = htmlContent;
+        
+        // Add feedback buttons for assistant messages only
+        if (role === 'assistant' && traceId) {
+            const feedbackDiv = document.createElement('div');
+            feedbackDiv.className = 'feedback-buttons';
+            feedbackDiv.innerHTML = `
+                <button class="feedback-btn thumbs-up" data-trace-id="${traceId}" title="Helpful">
+                    👍
+                </button>
+                <button class="feedback-btn thumbs-down" data-trace-id="${traceId}" title="Not helpful">
+                    👎
+                </button>
+            `;
+            messageDiv.appendChild(feedbackDiv);
+            
+            // Add event listeners to feedback buttons
+            const thumbsUp = feedbackDiv.querySelector('.thumbs-up');
+            const thumbsDown = feedbackDiv.querySelector('.thumbs-down');
+            
+            thumbsUp.addEventListener('click', () => sendFeedback(traceId, 'thumbs_up', thumbsUp, thumbsDown));
+            thumbsDown.addEventListener('click', () => sendFeedback(traceId, 'thumbs_down', thumbsUp, thumbsDown));
+        }
+        
         chatMessages.appendChild(messageDiv);
         chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function sendFeedback(traceId, rating, thumbsUpBtn, thumbsDownBtn) {
+        // Disable both buttons after clicking
+        thumbsUpBtn.disabled = true;
+        thumbsDownBtn.disabled = true;
+        
+        // Highlight the selected button
+        if (rating === 'thumbs_up') {
+            thumbsUpBtn.style.opacity = '1';
+            thumbsDownBtn.style.opacity = '0.3';
+        } else {
+            thumbsDownBtn.style.opacity = '1';
+            thumbsUpBtn.style.opacity = '0.3';
+        }
+        
+        fetch('/feedback', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                trace_id: traceId,
+                rating: rating
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('Feedback recorded:', data);
+        })
+        .catch(error => {
+            console.error('Error recording feedback:', error);
+            // Re-enable buttons on error
+            thumbsUpBtn.disabled = false;
+            thumbsDownBtn.disabled = false;
+        });
     }
 
     function loadReservations() {

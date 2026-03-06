@@ -28,4 +28,4 @@ data/yelp_academic_dataset_review.json
 .DS_Store
 Thumbs.db
 
-./newrelic.ini
+newrelic.ini

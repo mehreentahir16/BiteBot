@@ -10,9 +10,10 @@ import uuid
 import logging
 from datetime import datetime
 from dotenv import load_dotenv
+import newrelic.agent
 
 from src.discovery_and_reservation_agent import create_discovery_and_reservation_agent, run_agent
-from src.customer_support_agent import create_discovery_and_reservation_agent, run_support_agent
+from src.customer_support_agent import create_support_agent, run_support_agent
 from src.supervisor_agent import create_supervisor, route_request
 
 # Load environment variables
@@ -90,6 +91,9 @@ def chat():
             thread_id = str(uuid.uuid4())
             session['thread_id'] = thread_id
 
+        # Capture trace ID for feedback correlation
+        trace_id = newrelic.agent.current_trace_id()
+
         # Call the selected agent
         if agent_choice == "support":
             response = run_support_agent(
@@ -128,6 +132,7 @@ def chat():
 
         return jsonify({
             'message': assistant_message,
+            'trace_id': trace_id,
             'reservations': session.get('reservations', []),
             'agent': agent_choice  # Let frontend know which agent responded
         })
@@ -170,6 +175,25 @@ def health():
         'supervisor': supervisor is not None,
         'timestamp': datetime.now().isoformat()
     })
+
+@app.route('/feedback', methods=['POST'])
+def record_feedback():
+    """Record user feedback on agent responses."""
+    data = request.json
+    trace_id = data.get('trace_id')  # Received from frontend
+    rating = data.get('rating')  # e.g., 'thumbs_up' or 'thumbs_down'
+    category = data.get('category', None)  # Optional: e.g., 'inaccurate', 'helpful'
+    message = data.get('message', None)  # Optional: freeform text
+    
+    newrelic.agent.record_llm_feedback_event(
+        trace_id=trace_id,
+        rating=rating,
+        category=category,
+        message=message,
+        metadata={'session_id': session.get('thread_id')}
+    )
+    
+    return jsonify({'status': 'recorded'})
 
 
 if __name__ == '__main__':

@@ -84,8 +84,11 @@ def search_restaurants(
         params.append(min_stars)
     
     if max_price is not None:
-        query += " AND (attributes IS NULL OR attributes LIKE ? OR attributes LIKE ? OR attributes LIKE ?)"
-        # Match price range 1, 2, 3, or 4 (up to max_price)
+        # Create the correct number of LIKE clauses based on max_price
+        price_conditions = " OR ".join(["attributes LIKE ?"] * int(max_price))
+        query += f" AND (attributes IS NULL OR {price_conditions})"
+        
+        # Add matching number of parameters
         for i in range(1, int(max_price) + 1):
             params.append(f'%"RestaurantsPriceRange2": "{i}"%')
     

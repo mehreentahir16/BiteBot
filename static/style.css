@@ -94,6 +94,35 @@ header h1 {
     animation: slideIn 0.3s ease-out;
 }
 
+.feedback-buttons {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.feedback-btn {
+    background: none;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    padding: 4px 12px;
+    font-size: 16px;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: all 0.2s;
+}
+
+.feedback-btn:hover:not(:disabled) {
+    opacity: 1;
+    border-color: rgba(255, 255, 255, 0.4);
+    transform: scale(1.1);
+}
+
+.feedback-btn:disabled {
+    cursor: not-allowed;
+}
+
 @keyframes slideIn {
     from {
         opacity: 0;

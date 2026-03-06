@@ -27,7 +27,7 @@ class RouteDecision(BaseModel):
 
 def create_supervisor():
     """Create the supervisor LLM for routing."""
-    model = ChatOpenAI(model="gpt-4o", temperature=0)
+    model = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
     # Use structured output for reliable routing
     return model.with_structured_output(RouteDecision)

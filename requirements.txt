@@ -18,3 +18,4 @@ dateparser==1.2.2
 
 # Vector database
 pinecone==8.0.0
+newrelic==11.4.0
