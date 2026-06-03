@@ -6,6 +6,7 @@ src/__pycache__/
 *.so
 .Python
 venv/
+.venv
 env/
 ENV/
 
@@ -29,3 +30,4 @@ data/yelp_academic_dataset_review.json
 Thumbs.db
 
 newrelic.ini
+newrelic-m-s.ini

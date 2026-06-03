@@ -1,21 +1,22 @@
 # Core LangChain and OpenAI
-langchain==1.2.7
-langchain-openai==1.1.7
-openai==2.15.0
+langchain
+langchain-openai
+langgraph
+openai
 
 # Environment variables
-python-dotenv==1.2.1
+python-dotenv
 
 # Data processing
-pandas==2.3.3
+pandas
 
 # Flask
-Flask==3.1.2
+Flask
 
 # Utilities
-python-dateutil==2.9.0.post0
-dateparser==1.2.2
+python-dateutil
+dateparser
 
 # Vector database
-pinecone==8.0.0
-newrelic==11.4.0
+pinecone
+newrelic
