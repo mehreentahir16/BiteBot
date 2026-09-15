@@ -28,7 +28,7 @@ def create_support_agent():
     if not os.getenv("OPENAI_API_KEY"):
         raise ValueError("OpenAI API key not found.")
 
-    model = ChatOpenAI(model="gpt-4o", temperature=0.3)  # Lower temp for support
+    model = ChatOpenAI(model="gpt-5-mini", temperature=0.3)  # Lower temp for support
 
     system_prompt = """You are BiteBot's Customer Support Assistant.
 
@@ -82,6 +82,7 @@ def create_support_agent():
         support_tools,
         system_prompt=system_prompt,
         checkpointer=_support_checkpointer,
+        name="customer_support_agent",
     )
     return agent
 

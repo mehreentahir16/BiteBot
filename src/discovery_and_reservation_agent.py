@@ -76,6 +76,7 @@ def create_discovery_and_reservation_agent():
         all_tools,
         system_prompt=system_prompt,
         checkpointer=_checkpointer,
+        name="discovery_reservation_agent",
     )
     return agent
 

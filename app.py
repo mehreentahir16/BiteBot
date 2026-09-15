@@ -25,25 +25,30 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', os.urandom(24).hex())
 
-# Initialize multi-agent system (shared across sessions)
+# Agents are initialised lazily on the first request 
+_agents_lock = __import__('threading').Lock()
 restaurant_agent = None
 support_agent = None
 supervisor = None
 
-try:
-    print("Initializing BiteBot multi-agent system...")
-    restaurant_agent = create_discovery_and_reservation_agent()
-    print("Restaurant agent initialized")
-    support_agent = create_support_agent()
-    print("Support agent initialized")
-    supervisor = create_supervisor()
-    print("Supervisor initialized")
-    print("✅ BiteBot ready!")
-except Exception as e:
-    print(f"❌ Error initializing agents: {e}")
-    restaurant_agent = None
-    support_agent = None
-    supervisor = None
+
+def _ensure_agents():
+    """Initialise agents once, thread-safely, inside an active transaction."""
+    global restaurant_agent, support_agent, supervisor
+    if restaurant_agent is not None:
+        return True
+    with _agents_lock:
+        if restaurant_agent is not None:
+            return True
+        try:
+            restaurant_agent = create_discovery_and_reservation_agent()
+            support_agent = create_support_agent()
+            supervisor = create_supervisor()
+            logger.info("✅ BiteBot agents initialised")
+            return True
+        except Exception as e:
+            logger.error(f"❌ Error initialising agents: {e}", exc_info=True)
+            return False
 
 
 @app.route('/')
@@ -64,7 +69,7 @@ def index():
 @app.route('/chat', methods=['POST'])
 def chat():
     """Handle chat messages with multi-agent routing."""
-    if not all([restaurant_agent, support_agent, supervisor]):
+    if not _ensure_agents() or not all([restaurant_agent, support_agent, supervisor]):
         return jsonify({
             'error': 'Agents not initialized. Please check your configuration.'
         }), 500
@@ -169,7 +174,7 @@ def health():
     """Health check endpoint for monitoring."""
     all_initialized = all([restaurant_agent, support_agent, supervisor])
     return jsonify({
-        'status': 'healthy' if all_initialized else 'degraded',
+        'status': 'healthy' if all_initialized else 'starting',
         'restaurant_agent': restaurant_agent is not None,
         'support_agent': support_agent is not None,
         'supervisor': supervisor is not None,
